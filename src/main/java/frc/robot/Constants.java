@@ -233,7 +233,7 @@ public class Constants {
         
         // Pivot Constants
         public static final int kPivotCanID = 10; // CAN ID (dimensionless)
-        public static final double kPivotGearRatio = 9; // Gear ratio (dimensionless)
+        public static final double kPivotGearRatio = 16; // Gear ratio (dimensionless)
         public static final double kPivotKP = 100; // Proportional gain (dimensionless)
         public static final double kPivotKI = 0; // Integral gain (dimensionless)
         public static final double kPivotKD = 0; // Derivative gain (dimensionless)
