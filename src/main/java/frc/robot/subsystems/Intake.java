@@ -690,6 +690,14 @@ public class Intake extends SubsystemBase {
       .andThen(runOnce(() -> SpinnerSetVelocity(spinnerSpeed)));
   }
 
+  public Command DeployOnlyCommand() {
+    return runOnce(() -> deploy());
+  }
+
+  public Command SpinOnlyCommand() {
+    return runOnce(() -> SpinnerSetVelocity(spinnerSpeed));
+  }
+
   public Command ShootOnMoveDeployCommand() {
     return edu.wpi.first.wpilibj2.command.Commands.defer(() -> {
       // If the intake is near the stowed or ultra-stowed angles, we deploy and spin.
