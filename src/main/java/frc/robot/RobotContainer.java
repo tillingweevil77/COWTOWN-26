@@ -78,6 +78,9 @@ public class RobotContainer {
   // Whisker pickup mode toggle — B button cycles on/off
   private boolean isPickupModeActive = false;
 
+  // INtake spinner toggle — left trigger turns on/off
+  private boolean isIntakeSpinnerActive = false;
+
   // Pathfind zone cycle — operator left/right bumper
   private static final String[] PATHFIND_ZONES = {
     "Home",
@@ -101,15 +104,17 @@ public class RobotContainer {
 
   // ==================== DRIVER I/O ====================
 
-  private final CommandXboxController joystick = new CommandXboxController(0);
+  private final CommandXboxController driverJoystick = new CommandXboxController(0);
 
-  private final CommandXboxController operatorJoystick = new CommandXboxController(1);
+  private final CommandXboxController operatorJoystick = new CommandXboxController(1);  
 
-  private final CommandXboxController testJoystick = new CommandXboxController(2);
+  private final CommandXboxController operatorControllerFake = new CommandXboxController(2);
+
+  private final CommandXboxController testJoystick = new CommandXboxController(3);
 
   // Rumble command for driver feedback
-  private final ControllerRumble rumble = new ControllerRumble(joystick);
-  private final ControllerRumble operatorRumble = new ControllerRumble(operatorJoystick);
+  private final ControllerRumble rumble = new ControllerRumble(driverJoystick);
+  private final ControllerRumble operatorRumble = new ControllerRumble(operatorControllerFake);
 
   // Dashboard publisher
   private final DashboardPublisher dashboard;
@@ -157,9 +162,9 @@ public class RobotContainer {
     drivetrain,
     intake,
     turret,
-    () -> -joystick.getLeftY() * MaxSpeed,
-    () -> -joystick.getLeftX() * MaxSpeed,
-    () -> -joystick.getRightX() * MaxAngularRate,
+    () -> -driverJoystick.getLeftY() * MaxSpeed,
+    () -> -driverJoystick.getLeftX() * MaxSpeed,
+    () -> -driverJoystick.getRightX() * MaxAngularRate,
     MaxSpeed,
     MaxAngularRate);
 
@@ -287,24 +292,24 @@ public class RobotContainer {
     drivetrain.setDefaultCommand(
       // Drivetrain will execute this command periodically
       drivetrain.applyRequest(() ->
-        drive.withVelocityX(-joystick.getLeftY() * MaxSpeed)
-        .withVelocityY(-joystick.getLeftX() * MaxSpeed)
-        .withRotationalRate(-joystick.getRightX() * MaxAngularRate)
+        drive.withVelocityX(-driverJoystick.getLeftY() * MaxSpeed)
+        .withVelocityY(-driverJoystick.getLeftX() * MaxSpeed)
+        .withRotationalRate(-driverJoystick.getRightX() * MaxAngularRate)
       )
     );
 
     // robot oriented drive forwad and backward, also left right
-    joystick.pov(0).whileTrue(drivetrain.applyRequest(() ->
+    driverJoystick.pov(0).whileTrue(drivetrain.applyRequest(() ->
       driveRobotCentric.withVelocityX(robotCentricDriveSpeed).withVelocityY(0)));
-    joystick.pov(90).whileTrue(drivetrain.applyRequest(() ->
+    driverJoystick.pov(90).whileTrue(drivetrain.applyRequest(() ->
       driveRobotCentric.withVelocityX(0).withVelocityY(-robotCentricDriveSpeed)));
-    joystick.pov(180).whileTrue(drivetrain.applyRequest(() ->
+    driverJoystick.pov(180).whileTrue(drivetrain.applyRequest(() ->
       driveRobotCentric.withVelocityX(-robotCentricDriveSpeed).withVelocityY(0)));
-    joystick.pov(270).whileTrue(drivetrain.applyRequest(() ->
+    driverJoystick.pov(270).whileTrue(drivetrain.applyRequest(() ->
       driveRobotCentric.withVelocityX(0).withVelocityY(robotCentricDriveSpeed)));
 
-    // Both bumpers together: stow intake
-    joystick.rightBumper().and(joystick.leftBumper()).onTrue(
+    // Left bumper: stow intake
+    operatorJoystick.leftBumper().onTrue(
       intake.StowCommand().alongWith(
         Commands.runOnce(() -> {
           isShootOnMoveActive = false;
@@ -312,14 +317,38 @@ public class RobotContainer {
       )
     );
 
-    // Left bumper only (not right): stop spinner
-    joystick.leftBumper().and(joystick.rightBumper().negate()).onTrue(
-      intake.SpinnerStopCommand()
+    // Left trigger: toggle intake spinner
+    operatorJoystick.leftTrigger().onTrue(
+        Commands.runOnce(() -> {
+          isIntakeSpinnerActive = !isIntakeSpinnerActive;
+          if (isIntakeSpinnerActive) {
+            intake.SpinOnlyCommand().schedule();
+          } else {
+            intake.SpinnerStopCommand().schedule();
+          }
+
+        })
     );
 
-    // Right bumper only (not left): deploy intake
-    joystick.rightBumper().and(joystick.leftBumper().negate()).onTrue(
-      intake.DeployCommand()
+
+    // Right bumper: deploy intake
+    operatorJoystick.rightBumper().onTrue(
+      intake.DeployOnlyCommand()
+    );
+
+    // X button: zero turret
+    operatorJoystick.x().onTrue(
+        turret.SetDefaultAngleCommand()
+    );
+    
+    // Y button: set hood to trench position
+    driverJoystick.y().onTrue(
+        shooter.setHoodToTrenchCommand()
+    );
+
+    // Y button: set hood to trench position
+    operatorJoystick.y().onTrue(
+        shooter.setHoodToTrenchCommand()
     );
 
 
@@ -345,28 +374,37 @@ public class RobotContainer {
     //   • Everything stops (default commands take over)
     //   • Hood moves to trench position
 
-    // Toggle the flag on every right-trigger press (shoot-on-the-move)
-    joystick.rightTrigger().onTrue(
+    // Toggle on shoot-on-the-move while right trigger or B button is held
+    operatorJoystick.rightTrigger().or(operatorJoystick.b()).whileTrue(
       Commands.runOnce(() -> {
-        isShootOnMoveActive = !isShootOnMoveActive;
+        isShootOnMoveActive = true;
         SmartDashboard.putBoolean("DASHBOARD/Shoot On Move Active", isShootOnMoveActive);
-        if (isShootOnMoveActive && defenseDriveCommand.isScheduled()) {
+        if (defenseDriveCommand.isScheduled()) {
             defenseDriveCommand.cancel();
         }
       })
     );
 
+    // Toggle off shoot-on-the-move when right trigger or B button are not held
+    operatorJoystick.rightTrigger().and(operatorJoystick.b()).whileFalse(
+      Commands.runOnce(() -> {
+        isShootOnMoveActive = false;
+        SmartDashboard.putBoolean("DASHBOARD/Shoot On Move Active", isShootOnMoveActive);
+      })
+    );
+
     // Derive Trigger objects from the flag — the scheduler reacts to these every loop
     Trigger shootOnMoveOn = new Trigger(() -> isShootOnMoveActive);
-    Trigger triggerHeld = joystick.rightTrigger();
-    Trigger inBlockedZone = new Trigger(() -> dashboard.getCurrentZone() == FieldZones.ZoneType.BLOCKED);
+    //Trigger triggerHeld = joystick.rightTrigger();
+    //Trigger inBlockedZone = new Trigger(() -> dashboard.getCurrentZone() == FieldZones.ZoneType.BLOCKED);
     
-    Trigger warmUpActive = shootOnMoveOn.and(triggerHeld.or(inBlockedZone)); // ON + (held OR blocked)  → warm up
-    Trigger firingActive = shootOnMoveOn.and(triggerHeld.negate().and(inBlockedZone.negate())); // ON + released + not blocked → fire
+    //Trigger warmUpActive = shootOnMoveOn.and(triggerHeld.or(inBlockedZone)); // ON + (held OR blocked)  → warm up
+    //Trigger firingActive = shootOnMoveOn.and(triggerHeld.negate().and(inBlockedZone.negate())); // ON + released + not blocked → fire
+
 
     // Warm-up phase: turret + flywheel only, both lead-compensated
     // Target type is resolved dynamically
-    warmUpActive.whileTrue(
+    operatorJoystick.rightTrigger().whileTrue(
       turret.shootOnMoveCommandTurret(
         () -> drivetrain.getState().Pose,
         () -> ChassisSpeeds.fromRobotRelativeSpeeds(
@@ -386,7 +424,7 @@ public class RobotContainer {
 
     // Firing phase: turret + full shooter (hood+flywheel) + spindexer + feeder, all lead-compensated
     // Target type is resolved dynamically
-    firingActive.whileTrue(
+    operatorJoystick.b().whileTrue(
       turret.shootOnMoveCommandTurret(
         () -> drivetrain.getState().Pose,
         () -> ChassisSpeeds.fromRobotRelativeSpeeds(
@@ -411,13 +449,13 @@ public class RobotContainer {
       shooter.setHoodToTrenchCommand()
     );
 
-    // When shoot-on-the-move mode is toggled ON, intelligently deploy the intake
-    shootOnMoveOn.onTrue(
+    // When shoot-on-the-move mode is toggled ON, stupidly refrain from deploying intake
+    /*shootOnMoveOn.onTrue(
       intake.ShootOnMoveDeployCommand()
-    );
+    );*/
 
     // ── LEFT TRIGGER: Disable shoot on move, jiggle spindexer + intake ────────
-    joystick.leftTrigger().onTrue(
+    /*joystick.leftTrigger().onTrue(
       Commands.runOnce(() -> {
         isShootOnMoveActive = false;
         SmartDashboard.putBoolean("DASHBOARD/Shoot On Move Active", isShootOnMoveActive);
@@ -433,10 +471,10 @@ public class RobotContainer {
 
     joystick.leftTrigger().onFalse(
       intake.DeployCommand()
-    );
+    );*/
 
     //defualt shot
-    joystick.y().onTrue(
+    /*joystick.y().onTrue(
       Commands.runOnce(() -> {
         isShootOnMoveActive = false;
         SmartDashboard.putBoolean("DASHBOARD/Shoot On Move Active", isShootOnMoveActive);
@@ -449,31 +487,31 @@ public class RobotContainer {
 
     joystick.start().whileTrue(
       spindexer.reverseCommand().alongWith(feeder.reverseCommand())
-    );
+    );*/
 
     // ── X BUTTON: Brake (lock wheels in X pattern while held) ───────────────
-    joystick.x().whileTrue(drivetrain.applyRequest(() -> brake));
+    driverJoystick.x().whileTrue(drivetrain.applyRequest(() -> brake));
 
     // ── right stick BUTTON: Toggle Defense Drive ─
-    joystick.rightStick().toggleOnTrue(defenseDriveCommand);
+    /*joystick.rightStick().toggleOnTrue(defenseDriveCommand);
     Trigger defenseModeActive = new Trigger(defenseDriveCommand::isScheduled);
     defenseModeActive.onTrue(Commands.runOnce(() -> {
       isShootOnMoveActive = false;
       SmartDashboard.putBoolean("DASHBOARD/Shoot On Move Active", isShootOnMoveActive);
-    }));
+    }));*/
 
     // Pathfind to nearest position in opponent zone while A+Y held, cancel on joystick move
-    joystick.a().and(joystick.b()).onTrue(
+    /*joystick.a().and(joystick.b()).onTrue(
       PathFindCommands.pathfindToNearestPose(
         () -> drivetrain.getState().Pose,
         () -> List.of(FieldConstants.getLeftOpp(), FieldConstants.getRightOpp())
       ).until(joystick.leftStick().or(joystick.rightStick()))
-    );
+    );*/
 
     // reset the field-centric heading on back button press(back button)
-    joystick.back().onTrue(
+    /*joystick.back().onTrue(
       drivetrain.runOnce(() -> drivetrain.seedFieldCentric())
-    );
+    );*/
 
     // Idle while the robot is disabled. This ensures the configured
     // neutral mode is applied to the drive motors while disabled.
@@ -505,26 +543,26 @@ public class RobotContainer {
     // Operator Controls
     //===============================================================================================================
 
-    operatorJoystick.pov(0).onTrue(intake.DeployCommand());
-    operatorJoystick.pov(90).onTrue(intake.StowCommand().alongWith(
+    operatorControllerFake.pov(0).onTrue(intake.DeployCommand());
+    operatorControllerFake.pov(90).onTrue(intake.StowCommand().alongWith(
         Commands.runOnce(() -> {
           isShootOnMoveActive = false;
         })
     ));
-    operatorJoystick.pov(180).onTrue(intake.UltraStowCommand().alongWith(
+    operatorControllerFake.pov(180).onTrue(intake.UltraStowCommand().alongWith(
         Commands.runOnce(() -> {
           isShootOnMoveActive = false;
         })
     ));
-    operatorJoystick.pov(270).onTrue(intake.SpinnerStopCommand());
+    operatorControllerFake.pov(270).onTrue(intake.SpinnerStopCommand());
 
-    operatorJoystick.rightBumper().whileTrue(intake.SpinnerMoveAtVelocityCommand(-9));
+    operatorControllerFake.rightBumper().whileTrue(intake.SpinnerMoveAtVelocityCommand(-9));
 
-    operatorJoystick.b().whileTrue(spindexer.runCommand().alongWith(feeder.runCommand()));
-    operatorJoystick.x().whileTrue(spindexer.reverseCommand().alongWith(feeder.reverseCommand()));
+    operatorControllerFake.b().whileTrue(spindexer.runCommand().alongWith(feeder.runCommand()));
+    operatorControllerFake.x().whileTrue(spindexer.reverseCommand().alongWith(feeder.reverseCommand()));
 
-    operatorJoystick.a().onTrue(shooter.setHoodToTrenchCommand());
-    operatorJoystick.y().whileTrue(new DefaultShootCommand(turret, shooter, () -> drivetrain.getState().Pose));
+    operatorControllerFake.a().onTrue(shooter.setHoodToTrenchCommand());
+    operatorControllerFake.y().whileTrue(new DefaultShootCommand(turret, shooter, () -> drivetrain.getState().Pose));
 
     
     

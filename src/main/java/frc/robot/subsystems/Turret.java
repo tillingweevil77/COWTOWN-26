@@ -588,4 +588,11 @@ public class Turret extends SubsystemBase {
     return runOnce(() -> rezero());
   }
 
+  /**
+   * Command to set the turret angle to default (forward)
+   */
+  public Command SetDefaultAngleCommand() {
+    return runOnce(() -> setAngle(Constants.DefaultShot.kTurretAngleDegrees));
+  }
+
 }
